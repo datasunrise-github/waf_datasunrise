@@ -1,0 +1,78 @@
+version: '3.4'
+
+services:
+  # ----------------------------------------------------------------------
+  # REDIS
+  # ----------------------------------------------------------------------
+  redis:
+    image: redis
+    restart: always
+    command: /bin/sh -c "redis-server --requirepass '<REDIS_PASSWORD>'"
+    ports:
+      - 6379
+  # ----------------------------------------------------------------------
+  # ELASTICSEARCH
+  # ----------------------------------------------------------------------
+  elasticsearch:
+    image: elasticsearch:7.6.2
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=<ELASTICSEARCH_PASSWORD>
+    healthcheck:
+      test: curl -s -f -u elastic:'<ELASTICSEARCH_PASSWORD>' http://localhost:9200/_cluster/health?wait_for_status=yellow
+      interval: 5s
+      timeout: 30s
+      retries: 6
+    ports:
+      - 9200
+      - 9300
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+  # ----------------------------------------------------------------------
+  # PROXY-SERVICE
+  # ----------------------------------------------------------------------
+  proxy-service:
+    image: datasunrise/waf_proxy
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=<REDIS_PASSWORD>
+      - SERVER_URL=http://localhost
+      - WSID=guid
+      - ELASTIC_HOST=elasticsearch
+      - ELASTIC_PORT=9200
+      - ELASTIC_PASSWORD=<ELASTICSEARCH_PASSWORD>
+      - ADMIN_PASSWORD=<ADMIN_PASSWORD>
+      - CONFIG_SOURCE=GIT
+      - CONFIG_REPO_URL=https://github.com/datasunrise-github/waf_datasunrise
+    ports:
+      - 9999:9999
+    depends_on:
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+  # ----------------------------------------------------------------------
+  # DATASUNRISE
+  # ----------------------------------------------------------------------
+  datasunrise_ecap:
+    image: datasunrise/waf_ecap
+    restart: always
+    tty: true
+    privileged: true
+    environment:
+      - REDIS_PASSWORD=<REDIS_PASSWORD>
+      - DS_LICENSE_KEY=<LICENSE_KEY_OPTIONAL>
+      - DS_ADMIN_PASSWORD=<DS_ADMIN_PASSWORD_OPTIONAL>
+    ports:
+      - 3128:3128
+      - 11000:11000
+    depends_on:
+      - proxy-service
+
+volumes:
+  elasticsearch_data:
+    name: elasticsearch_data
