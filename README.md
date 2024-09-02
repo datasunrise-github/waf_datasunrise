@@ -26,7 +26,7 @@ The deployment includes the following key components:
 
 - **ADMIN_PASSWORD**: Password for DataSunrise admin access.
 - **CONFIG_REPO_URL**: URL for the configuration repository (default: DataSunrise GitHub repository).
-- **CONFIG_SOURCE**: CONFIG_SOURCE. You can change source from repository to local destination with option `LOCAL`. In this case,
+- **CONFIG_SOURCE**: You can change source from repository to local destination with option `LOCAL`. In this case,
                      will be used the configuration in `/opt/proxy/scripts/` directory inside the proxy-service container. Put `config.json` inside
                      the container during startup by using volumes.
 
