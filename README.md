@@ -82,9 +82,13 @@ The deployment includes the following key components:
 
 4. **Configure Salesforce instance**:
    In DataSunrise go to the Configuration#Databases#Add Database. Input the following information to connect Redis service:
+
       Database Type (Salesforce);
+
       Hostname or IP (Redis);
+   
       Port;
+   
       Database user name;
       Password (the Redis password).
    
