@@ -66,14 +66,28 @@ The deployment includes the following key components:
      docker-compose up -d
      ```
 
-2. **Access the DataSunrise Interface**:
-   - Open a browser and navigate to: `http://<your-docker-host>:9999/ui/auth/login`.
+2. **To audit the Salesforce or ChatGPT sessions through the squid-proxy, do the following**:
+   - Indicate the Host `<yourdockerhost>` and the Port `3128` in your browser or Network System Settings.
+   - The squid certificate is located in the `datasunrise_ecap-1` docker container, in the `/home/datasunrise/ssl/squidCA.pem` directory.
+   - Copy a file from a docker to a host directory <destiny> with the following command:
+      ```bash
+      docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <destiny>
+      ```
+
+3. **To configure the proxy-service, do the following**:
+   - Important: This is required only for Salesforce settings.
+   - Open `http://<your docker host>:9999/ui/auth/login` in your browser.
    - Enter the admin password set via the `ADMIN_PASSWORD` environment variable.
+   - In the Applications - Salesforce Connections add new connection. Specify username, password and TOTP Secret from your Salesforce account.
 
-3. **Configure Salesforce Connection**:
-   - In the DataSunrise interface, go to `Configuration > Databases > Add Database`.
-   - Select `Salesforce` as the database type.
-   - Provide the Redis connection details and save the configuration.
+4. **Configure Salesforce instance**:
+   - In DataSunrise go to the Configuration#Databases#Add Database. Input the following information to connect Redis service:
+      • Database Type (Salesforce);
+      • Hostname or IP (Redis);
+      • Port;
+      • Database user name;
+      • Password (the Redis password).
+   **Important**: You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve.
 
-4. **Create an Audit Rule**:
-   - After configuring the connection, set up an audit rule to monitor Salesforce or ChatGPT sessions.
+5. **After configuring the connection**:
+   - Set up an audit rule to monitor Salesforce or ChatGPT sessions. 
