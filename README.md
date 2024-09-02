@@ -1,5 +1,3 @@
-# waf_datasunrise
-
 # DataSunrise: Deploying a Salesforce and ChatGPT Connection
 
 This guide covers the deployment architecture, component parameters, system requirements, and first-time login steps for setting up a connection between Salesforce and ChatGPT using DataSunrise.
