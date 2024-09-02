@@ -75,12 +75,14 @@ The deployment includes the following key components:
       ```
 
 3. **To configure the proxy-service, do the following**:
-   - Important: This is required only for Salesforce settings.
+
+   **Important**: This is required only for Salesforce settings.
+
    - Open `http://<your docker host>:9999/ui/auth/login` in your browser.
    - Enter the admin password set via the `ADMIN_PASSWORD` environment variable.
    - In the Applications - Salesforce Connections add new connection. Specify username, password and TOTP Secret from your Salesforce account.
 
-4. **Configure Salesforce instance**:
+5. **Configure Salesforce instance**:
 
    In DataSunrise go to the Configuration#Databases#Add Database. Input the following information to connect Redis service:
 
