@@ -81,13 +81,14 @@ The deployment includes the following key components:
    - In the Applications - Salesforce Connections add new connection. Specify username, password and TOTP Secret from your Salesforce account.
 
 4. **Configure Salesforce instance**:
-   - In DataSunrise go to the Configuration#Databases#Add Database. Input the following information to connect Redis service:
-   - **Database Type (Salesforce)**;
-   - **Hostname or IP (Redis)**;
-   - **Port**;
-   - **Database user name**;
-   - **Password (the Redis password)**.
-   - **Important**: You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve.
+   In DataSunrise go to the Configuration#Databases#Add Database. Input the following information to connect Redis service:
+      Database Type (Salesforce);
+      Hostname or IP (Redis);
+      Port;
+      Database user name;
+      Password (the Redis password).
+   
+   **Important**: You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve.
 
-5. **After configuring the connection**:
+6. **After configuring the connection**:
    - Set up an audit rule to monitor Salesforce or ChatGPT sessions. 
