@@ -1,0 +1,191 @@
+// ====================================================================================
+def getAuthData(Dynamic_Object obj) {
+    return obj.authData;
+}
+
+def handleResponse(HTTP http, Dynamic_Object obj) {
+   if (http.isRequest()) {
+        return CreateFound(obj.builder);
+    }
+    return NothingFound();
+}
+// ================================================================================
+def debug_handleContent(obj) {
+    return Map();
+}
+
+def handleConversationAPI(body, auth) {
+    if (body.exists("messages")) {
+            var messages = body["messages"];
+            if (messages.isArray()) {
+                var obj = Dynamic_Object ();
+                obj.authData = Map();
+                obj.authData["@user-identity"] = auth;
+
+                var builder = TableBuilder("content");
+                builder.addColumn("id");
+                builder.addColumn("content_type");
+                builder.addColumn("part_number");
+                builder.addColumn("part");
+                var id = 0;
+                for (elt : messages) {
+                    if (elt.exists("role") && elt["role"] == "user") {
+                        if (elt.exists("content")) {
+                            builder.addCell(id);
+                            builder.addCell("");
+                            builder.addCellInt(0);
+                            builder.addCell(elt["content"].asString(), "/messages/${id}/content");
+                            builder.addRow();
+                        }
+                    }
+                    id = id + 1;
+                }
+                obj.builder = builder;
+                return AcceptedDataReady(obj, debug_handleContent);
+            }
+    }
+    return NothingFound();
+}
+
+def handleConversation(body, auth) {
+    if (body.exists("messages")) {
+        var messages = body["messages"];
+        if (messages.isArray()) {
+            var obj = Dynamic_Object ();
+            obj.authData = Map();
+
+            obj.authData["oai-did"] = auth;
+
+            var rolePath = JSONPointer("/author/role");
+            var builder = TableBuilder("content");
+            builder.addColumn("id");
+            builder.addColumn("content_type");
+            builder.addColumn("part_number");
+            builder.addColumn("part");
+            var message_id = 0;
+            for (elt : messages) {
+                if (elt.exists(rolePath) && elt[rolePath] == "user") {
+                        if (elt.exists("content")) {
+                            var id = elt["id"];
+                            var c = elt["content"];
+                            var ct = "";
+                            if (c.exists("content_type")) {
+                                ct = c["content_type"].asString();
+                            }
+                            var part_num = 0;
+                            for (p : c["parts"]) {
+                                builder.addJsonCell(id);
+                                builder.addCell(ct);
+                                builder.addCellInt(part_num);
+                                builder.addJsonCell(p, "/messages/${message_id}/content/parts/${part_num}");
+                                builder.addRow();
+                                part_num = part_num + 1;
+                            }
+                        }
+                }
+                message_id = message_id + 1;
+            }
+            builder.addTable("attachments");
+            builder.addColumn("message_id");
+            builder.addColumn("name");
+            builder.addColumn("id");
+            builder.addColumn("size");
+            builder.addColumn("mimeType");
+            var mdPath = JSONPointer("/metadata/attachments");
+            for (elt : messages) {
+                if (elt.exists(rolePath) && elt[rolePath] == "user") {
+                    if (elt.exists(mdPath)) {
+                        var atts = elt[mdPath];
+                        for (a : atts) {
+                            builder.addJsonCell(elt["id"]);
+                            builder.addJsonCell(a["name"]);
+                            builder.addJsonCell(a["id"]);
+                            builder.addJsonCell(a["size"]);
+                            if (a.exists("mimeType")) {
+                                builder.addJsonCell(a["mimeType"]);
+                            } else {
+                                if (a.exists("mime_type")) {
+                                    builder.addJsonCell(a["mime_type"]);
+                                }
+                            }
+                            builder.addRow();
+                        }
+                    }
+                }
+            }
+
+            obj.builder = builder;
+            return AcceptedDataReady(obj, debug_handleContent);
+        }
+    }
+    return Rejected();
+}
+// ================================================================================
+def handlePutFile(http, fragment) {
+    var builder = TableBuilder("files");
+    builder.addColumn("id");
+    builder.addColumn("data");
+    builder.addCell(fragment);
+    builder.addCellBlob(http.asBLOB());
+    builder.addRow();
+
+    var obj = Dynamic_Object ();
+    obj.authData = Map();
+    obj.builder = builder;
+    return AcceptedDataReady(obj, debug_handleContent);
+}
+// ================================================================================
+def accept(HTTP http) {
+    if (http.isPost()) {
+        var url = http.url();
+        if (url == "https://chat.openai.com/backend-api/conversation" || url == "https://chatgpt.com/backend-api/conversation") {
+            var response = http.asJSON();
+            var device_id = http.valueOfSetCookie("oai-did");
+            var did_str = "";
+            if (device_id.hasValue()) {
+                did_str = device_id.getValue().to_string();
+            }
+            return handleConversation(response, did_str);
+        } else if (url == "https://api.openai.com/v1/chat/completions") {
+            var optAuth = http.headerValue("Authorization");
+            if (optAuth.hasValue()) {
+                var rawHeader = optAuth.getValue();
+                if (rawHeader.containsIgnoreCase("Bearer ")) {
+                    var token = rawHeader.subString(7).to_string();
+                    var response = http.asJSON();
+                    return handleConversationAPI(response, token);
+                }
+            }
+        }
+    }
+    if (http.isPut()) {
+        var url = URLParser(http.url());
+        if (url.getHost() == "files.oaiusercontent.com" && starts_with(url.getPath(), "/file-")) {
+            return handlePutFile(http, url.getPath());
+        }
+    }
+    return Rejected();
+}
+
+def filter(http) {
+    if (http.isPost()) {
+            var url = http.url();
+            if (url == "https://chat.openai.com/backend-api/conversation" || url == "https://chatgpt.com/backend-api/conversation") {
+                return true;
+            }
+            if (url == "https://api.openai.com/v1/chat/completions") {
+                if (http.headerValue("Authorization").hasValue()) {
+                    return true;
+                }
+            }
+    }
+    if (http.isPut()) {
+            var url = URLParser(http.url());
+            if (url.getHost() == "files.oaiusercontent.com" && starts_with(url.getPath(), "/file-")) {
+                return true;
+            }
+        }
+    return false;
+}
+
+ApplicationProtocolHandler("ChatGPT", getAuthData, accept, handleResponse, filter);

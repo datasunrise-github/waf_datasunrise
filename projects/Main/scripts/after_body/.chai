@@ -1,0 +1,4 @@
+window.OLD_QUERY_SELECTOR = Element.prototype.querySelector
+Element.prototype.oldQuerySelector = function (selector) {
+    return window.OLD_QUERY_SELECTOR.call(this, selector)
+}

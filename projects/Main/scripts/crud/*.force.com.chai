@@ -1,0 +1,362 @@
+global DELETE_RECORD_API = "serviceComponent://ui.force.components.controllers.recordGlobalValueProvider.RecordGvpController/ACTION$deleteRecord";
+global GET_ITEMS_API = "serviceComponent://ui.force.components.controllers.lists.listViewDataManager.ListViewDataManagerController/ACTION$getItems";
+global CREATE_API = "aura://RecordUiController/ACTION$createRecord";
+global UPDATE_API = "aura://RecordUiController/ACTION$updateRecord";
+
+def getTableName(string pageURI) {
+    var prefix = "/o/";
+    var pos1 = find(pageURI, prefix);
+    if (pos1 > pageURI.size()) {
+        prefix="/r/";
+        pos1 = find(pageURI, prefix);
+        if (pos1 > pageURI.size()) {
+            return "";
+        }
+    }
+    var temp = substring(pageURI, pos1 + prefix.size(), -1);
+    var pos2 = find_first_of(temp, "/");
+    var tableName = trim(substring(temp, 0, pos2));
+    return tableName;
+}
+// ====================================================================================
+def createResp(id, endpoint, tableName, authData) {
+    var obj = Dynamic_Object ();
+    obj.id = id;
+    obj.endpoint = endpoint;
+    obj.tableName = tableName;
+    obj.authData = authData;
+    return obj;
+}
+// ====================================================================================
+def debug_handleGetItems(obj) {
+    var m = Map();
+    m["id"] = obj.id;
+    m["endpoint"] = obj.endpoint;
+    m["tableName"] = obj.tableName;
+    return m;
+}
+def handleGetItems(tableName, obj, authData) {
+    if (!obj.exists("id")) {
+        return Rejected();
+    }
+    if (!obj.exists("params")) {
+        return Rejected();
+    }
+    var params = obj["params"];
+    if (!params.exists("entityName")) {
+        return Rejected();
+    }
+    var entity = params["entityName"];
+    var id = obj["id"];
+    if (id.isString() && entity.isString()) {
+        var obj = createResp(id.asString(), GET_ITEMS_API, entity.asString(), authData);
+        return Accepted(obj, debug_handleGetItems);
+    }
+    return Rejected();    
+}
+// ====================================================================================
+def debug_handleDeleteRecord(obj) {
+    var m = debug_handleGetItems(obj);
+    m["recordId"] = obj.recordId;
+    return m;
+}
+def handleDeleteRecord(tableName, obj, authData) {
+    if (!obj.exists("id")) {
+        return Rejected();
+    }
+    if (!obj.exists("params")) {
+        return Rejected();
+    }
+    var params = obj["params"];
+    if (!params.exists("recordId")) {
+        return Rejected();
+    }
+    var recordId = params["recordId"];
+    var id = obj["id"];
+    if (id.isString()) {
+        var obj = createResp(id.asString(), DELETE_RECORD_API, tableName, authData);
+        obj.recordId = recordId;
+        return Accepted(obj, debug_handleDeleteRecord);
+    }
+    return Rejected();
+}
+// ====================================================================================
+def debug_handleCreateOrUpdateRecord(obj) {
+    var m = debug_handleGetItems(obj);
+    m["fields"] = obj.fields;
+    return m;
+}
+def handleCreateOrUpdateRecord(tableName, api, obj, authData) {
+    if (!obj.exists("id")) {
+        return Rejected();
+    }
+    
+
+    var id = obj["id"];
+    var params = obj["params"];
+    
+        
+    if (id.isString()) {
+        var obj = createResp(id.asString(), api, tableName, authData);
+        obj.fields = params["recordInput"]["fields"].to_string();
+        
+        return Accepted(obj, debug_handleCreateOrUpdateRecord);
+    }
+    return Rejected();
+}
+// ====================================================================================
+def accept(HTTP http) {
+    if (http.isPost() && http.hasBody()) {
+        var url = http.url();
+        if (wildcard_match("*force.com/aura?*", url)) {
+            var pageURI = http.findInBodyQuery("aura.pageURI");
+            if (!pageURI.hasValue()) {
+                return Rejected();
+            }
+            var tableName = getTableName(pageURI.getValue().to_string());
+            var message = http.findInBodyQuery("message");
+            if (message.hasValue()) {
+                var obj = parseJson(message.getValue().to_string());
+                if (obj.exists("actions")) {
+                    var actions = obj["actions"];
+                    if (actions.isArray()) {
+                        var n = actions.size();
+                        var authData = Map();
+                        authData["browserId"]     = http.valueOfSetCookie("BrowserId");
+                        authData["browserId_sec"] = http.valueOfSetCookie("BrowserId_sec");
+                        authData["sid"]           = http.valueOfSetCookie("sid");
+                        authData["sid_Client"]    = http.valueOfSetCookie("sid_Client");
+
+                        for (elt : actions) {
+                            if (elt.exists("descriptor")) {
+                                var descriptor = elt["descriptor"].asString();
+                                switch (descriptor) {
+                                    case (DELETE_RECORD_API) {
+                                        return handleDeleteRecord(tableName, elt, authData);
+                                    }
+                                    case (GET_ITEMS_API) {
+                                        return handleGetItems(tableName, elt, authData);
+                                    }
+                                    case (CREATE_API) {
+                                        return handleCreateOrUpdateRecord(tableName, CREATE_API, elt, authData);
+                                    }
+                                    case (UPDATE_API) {
+                                        return handleCreateOrUpdateRecord(tableName, UPDATE_API, elt, authData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return Rejected();
+}
+// ====================================================================================
+def parseColumnDefs(ParsedJSON fields, TableBuilder builder) {
+    var res = Vector();
+    for (jf : fields) {
+        if (jf.isString()) {
+            var f = jf.asString();
+            builder.addColumn(f + "!value");
+            builder.addColumn(f + "!displayValue");
+            var pos1 = find(f, ".");
+            if (pos1 > f.size()) {
+                res.push_back([f]);
+            } else {
+                res.push_back(
+                    [f, substring(f, 0, pos1), substring(f, pos1+1, f.size())];
+                );
+            }
+        }
+    }
+    return res;
+}
+// ====================================================================================
+def extractData(ParsedJSON obj, Vector column, string field) {
+    var primary;
+    if (column.size() == 1) {
+        primary = obj[column[0]];
+    } else {
+        primary = obj[column[1]]["value"]["fields"][column[2]];
+    }
+    return primary[field];
+}
+// ====================================================================================
+def getJsonPointerColumnName(Vector column, string field) {
+    if (column.size() == 1) {
+        return "${column[0]}/${field}"
+    }
+    return "${column[1]}/value/fields/${column[2]}/${field}"
+}
+// ====================================================================================
+def parseGetItems(string tableName, ParsedJSON action, ParsedJSON response) {
+    if (!action.exists("returnValue")) {
+        return NothingFound();
+    }
+    if (!action["returnValue"].exists("recordIdActionsList")) {
+        return NothingFound();
+    }
+    if (!action["returnValue"].exists("fields")) {
+        return NothingFound();
+    }
+    var fields = action["returnValue"]["fields"];
+    
+    if (!fields.isArray()) {
+        return NothingFound();
+    }
+
+
+    var ids = action["returnValue"]["recordIdActionsList"];
+    if (!ids.isArray()) {
+        return NothingFound();
+    }
+
+    if (!response.exists("context")) {
+        return NothingFound();
+    }
+    if (!response["context"].exists("globalValueProviders")) {
+        return NothingFound();
+    }
+    var ctx = response["context"]["globalValueProviders"];
+    if (!ctx.isArray()) {
+        return NothingFound();
+    }
+
+    var builder  = TableBuilder(tableName);
+    var columnDefs = parseColumnDefs(fields, builder);
+    var found = 0;
+    var ctxPointer = 0;
+
+    for (c : ctx) {
+        if (c.exists("type") && c["type"].isString() && c["type"].asString() == "$Record") {
+           if (c.exists("values") && c["values"].exists("records")) {
+               var records = c["values"]["records"];
+               if (records.isObject()) {
+                    for (rn : ids) {
+                        var key = rn["recordId"].asString();
+                        if (records.exists(key) && records[key].exists(tableName)) {
+                            var dataObj = records[key][tableName]["record"]["fields"];
+                            var jsonPrefix = "/context/globalValueProviders/${ctxPointer}/values/records/${key}/${tableName}/record/fields";
+                            for (col : columnDefs) {
+                                for (v : ["value", "displayValue"]) {
+                                    var colName = col[0];
+                                    var jsonPointer = jsonPrefix + "/" + getJsonPointerColumnName(col, v);
+                                    // console.log(jsonPointer);
+                                    var data = extractData(dataObj, col, v);
+                                    if (!data.isNull()) {
+                                        builder.addCell(data.asString(), jsonPointer);
+                                    } else {
+                                        builder.ommit();
+                                    }
+                                    found = 1;
+                                }
+                            }
+                            builder.addRow();
+                        }
+                    }
+               }
+           }     
+        }
+        ctxPointer = ctxPointer + 1;
+    }
+    if (found == 0) {
+        return NothingFound();
+    }
+    return RetrieveFound(builder);
+}
+// ====================================================================================
+def parseCreateOrUpdateRecord(string tableName, ParsedJSON action, ParsedJSON fields, isCreate) {
+    if (!action.exists("returnValue")) {
+        return NothingFound();
+    }
+    
+    var rfields = action["returnValue"];    
+
+    var hasId = rfields.exists("id");
+
+    var builder  = TableBuilder(tableName);
+    var data = Vector();
+    
+    for (e : fields.items()) {
+        var k = e.key();
+
+        builder.addColumn(k);
+        data.push_back(e.value());
+    }
+
+    if (hasId) {
+        builder.addColumn("internal:Id");
+    }
+
+    for (v : data) {
+        builder.addJsonCell(v);
+    }
+
+    if (hasId) {
+        builder.addCell(rfields["id"].asString());
+    }
+    builder.addRow();
+    if (isCreate == 1) {
+        return CreateFound(builder);
+    }
+    return UpdateFound(builder);
+}
+// ====================================================================================
+def handleResponse(HTTP http, Dynamic_Object obj) {
+    if (http.hasBody() && http.isJSON()) {
+        var id = obj.id;
+        var response = http.asJSON();
+        if (response.exists("actions")) {
+            var actions = response["actions"];
+            for (act : actions) {
+                if (act.exists("id")) {
+                   var act_id = act["id"];
+                   if (act_id.isString() && (act_id.asString() == id)) {
+                       if (act.exists("state")) {
+                           var state = act["state"];
+                           if (state.isString() && state.asString() != "SUCCESS") {
+
+                                return NothingFound();                       
+                           }
+                           switch (obj.endpoint) {
+                               case (DELETE_RECORD_API) {
+                                    if (obj.recordId.isString()) {
+                                        return DeleteFound(obj.tableName, obj.recordId.asString());
+                                    }
+                               }
+                               case (GET_ITEMS_API) {
+                                    return parseGetItems(obj.tableName, act, response);
+                               }
+                               case (CREATE_API) {
+                                  return parseCreateOrUpdateRecord(obj.tableName, act, parseJson(obj.fields), 1);
+                               }
+                               case (UPDATE_API) {
+                                  return parseCreateOrUpdateRecord(obj.tableName, act, parseJson(obj.fields), 0);
+                               }
+                           }
+                       }
+                   }
+                }
+            }
+        }
+    }
+    return NothingFound();
+}
+// ====================================================================================
+def getAuthData(Dynamic_Object obj) {
+    return obj.authData;
+}
+
+def filter(http) {
+    if (http.isPost()) {
+            var url = http.url();
+            if (wildcard_match("*force.com/aura?*", url)) {
+                return true;
+            }
+    }
+    return false;
+}
+// ====================================================================================
+ApplicationProtocolHandler("salesforce", getAuthData, accept, handleResponse, filter);

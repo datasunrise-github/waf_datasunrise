@@ -1,0 +1,168 @@
+function __name_space__(HOSTIP, ORIGIN, SERVER_ADDR, WORKSPACE) {
+    
+
+    function guid() {
+        function s4() {
+            return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1)
+        }
+        return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4()
+    }
+
+    const TAB_ID = guid()
+    const DEFAULT_TIMEOUT = 15000
+    const PING_TIMEOUT = 60 * 1000
+    let isActive = true
+
+    class PageInfo {
+        constructor() {
+            this.hostname = ""
+            this.rootDomain = ""
+            this.url = ""
+            this.tabId = null
+        }
+    }
+    class HttpWorker {
+        constructor() {
+            this.urlObj = {
+                hostname: "",
+                rootDomain: "",
+                url: ""
+            };
+            this.pingTimeout = PING_TIMEOUT
+            this.httpQuery = []
+            this.isQueryInWork = false
+        }
+        doHttp (data, addr = SERVER_ADDR + '/event', method = "POST", timeout = DEFAULT_TIMEOUT) {
+            return new Promise((resolve, reject) => {
+                let xhr = new XMLHttpRequest();
+                xhr.open(method, addr, true);
+                if (method === "POST")
+                    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                if (isNaN(timeout))
+                    timeout = DEFAULT_TIMEOUT;
+                xhr.timeout = timeout;
+                xhr.send(data);
+                xhr.addEventListener("timeout", function() {
+                    return reject("Binadox timeout error: ")
+                }, false)
+                xhr.addEventListener("error", function(e) {
+                    return reject("Binadox error while sending data: " + addr + " ::: " + e)
+                }, false)
+                xhr.addEventListener("load", function() {
+                    return resolve(this.responseText.toString())
+                }, false)
+            });
+        }
+        addInHttpQuery(data) {
+            this.httpQuery.push(data)
+            if(!this.isQueryInWork)
+                this.doQueryHttps()
+        }
+        doQueryHttps() {
+            if (!isActive) {
+                return
+            }
+            this.isQueryInWork = true
+            return this.doHttp(this.httpQuery[0])
+                .then(data => {
+                    this.httpQuery.shift();
+                    if(this.httpQuery.length > 0)
+                        return this.doQueryHttps()
+                    else
+                        this.isQueryInWork = false
+                })
+                .catch(err => {
+                    console.log("Binadox error httpQuery: ", err)
+                    this.isQueryInWork = false
+                })
+        }
+    }
+
+    function getRootDomain(hostname) {
+        const rootDomainRE = /([\w\d]*\.\w{2,4}$)/
+        let rootDomain = window.location.hostname.match(rootDomainRE)
+        return rootDomain ? rootDomain[1] : null
+    }
+
+    function setCurrentHostName() {
+        return new Promise(resolve => {
+            httpWorker.urlObj.url = window.location.href
+            httpWorker.urlObj.rootDomain = getRootDomain(window.location.hostname)
+            httpWorker.urlObj.hostname = window.location.hostname.replace('www.', '')
+            return resolve(httpWorker.urlObj.hostname)
+        })
+    }
+
+    let httpWorker = new HttpWorker();
+    let pageInfo = new PageInfo();
+
+    pageInfo.tabId = TAB_ID
+    pageInfo.macId = HOSTIP
+
+    function pingLoop() {
+        let pingObjects = {
+            type: 'tracking_data',
+            clientip: HOSTIP,
+            name: 'ping_loop',
+            payload: {
+                tabid: TAB_ID,
+                GUID: WORKSPACE,
+                orig: btoa(ORIGIN)
+            }
+        }
+        pingObjects.url = httpWorker.urlObj.url === decodeURI(httpWorker.urlObj.url) ?
+            btoa(encodeURI(httpWorker.urlObj.url)) :
+            btoa(httpWorker.urlObj.url)
+        return httpWorker.addInHttpQuery(JSON.stringify(pingObjects));
+    }
+
+    async function getLogin() {
+        {{LOGIN_SCRIPT}}
+    }
+
+    window.onfocus = function() {
+        tabFocus()
+    }
+
+    function tabFocus() {
+        window.onfocus
+        let tabFocus = {
+            type: 'tracking_data',
+            clientip: HOSTIP,
+            name: 'tab_focus',
+            payload: {
+                tabid: TAB_ID,
+                GUID: WORKSPACE,
+                orig: btoa(ORIGIN)
+            }
+        }
+        fetch(SERVER_ADDR + '/event', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(tabFocus)
+        })
+    }
+
+    function main() {
+        if (!document || !document.body) {
+            main
+        }
+        setCurrentHostName()
+            .then(() => {
+                setInterval(pingLoop, httpWorker.pingTimeout)
+            }).catch(err => {
+            console.log("Binadox connection failed: ", err)
+        })
+
+        pageInfo.url = document.location.href
+        pageInfo.hostname = document.location.hostname.replace('www.', '')
+        pageInfo.rootDomain = getRootDomain(pageInfo.hostname)
+
+        pingLoop()
+        getLogin()
+
+    }
+    main()
+}

