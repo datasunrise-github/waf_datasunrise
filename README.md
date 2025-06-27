@@ -84,6 +84,15 @@ Start the infrastructure from the directory with the docker-compose.yml with the
       ```bash
       docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <destiny>
       ```
+> **Note:** 
+> After making changes to Generative AI settings (e.g., setting up the instance, audit rules, event tagging, or Dynamic Masking attributes), you need to restart the relevant container to apply them.
+>
+> Look for a container with **"ecap"** in its name and restart it:
+>
+> ```bash
+> docker container restart <container_name>
+> ```
+
 ### To configure the proxy-service, do the following:
 
 In DataSunrise go to the Configuration→Databases→Add Database. Input the following information to connect Redis service:
