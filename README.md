@@ -86,7 +86,7 @@ docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <d
 ```
 
 **Note:** 
-After making changes to Generative AI settings (e.g., setting up the instance, audit rules, event tagging, or Dynamic Masking attributes), you need to restart the relevant container to apply them.
+After making changes to Generative AI settings (e.g., setting up the instance, audit rules, event tagging, or Dynamic Masking attributes), you need to restart the ecap container to apply them.
 
 > Look for a container with **"ecap"** in its name and restart it:
 >
