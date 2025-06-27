@@ -91,7 +91,7 @@ After making changes to Generative AI settings (e.g., setting up the instance, a
 > Look for a container with **"ecap"** in its name and restart it:
 >
 > ```bash
-> docker container restart <container_name>
+> docker restart <container_name>
 > ```
 
 ### To configure the proxy-service, do the following:
