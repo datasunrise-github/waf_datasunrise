@@ -76,14 +76,15 @@ Start the infrastructure from the directory with the docker-compose.yml with the
  docker-compose up -d
 ```
 ### To audit the Salesforce or ChatGPT sessions through the squid-proxy, do the following:
-   1)  Indicate the Host <yourdockerhost> and the Port 3128 in your browser or Network System Settings.
-   2) The squid certificate is located in the datasunrise_ecap-1 docker container, in the '/home/datasunrise/ssl/'
- squidCA.pem directory.
+1) Indicate the Host <yourdockerhost> and the Port 3128 in your browser or Network System Settings.
+2) The squid certificate is located in the datasunrise_ecap-1 docker container, in the '/home/datasunrise/ssl/'
+squidCA.pem directory.
+3) Copy a file from a docker to a host directory <destiny> with the following command:
 
-   3) Copy a file from a docker to a host directory <destiny> with the following command:
-      ```bash
-      docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <destiny>
-      ```
+```bash
+docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <destiny>
+```
+
 **Note:** 
 After making changes to Generative AI settings (e.g., setting up the instance, audit rules, event tagging, or Dynamic Masking attributes), you need to restart the relevant container to apply them.
 
