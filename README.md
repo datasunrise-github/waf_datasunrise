@@ -1,211 +1,245 @@
-# DataSunrise: Creating a Web Application and Generative AI Connection
+# DataSunrise WAF for Web Applications and Generative AI
 
-This guide covers the deployment architecture, component parameters, system requirements, and first-time login steps for setting up a connection between Salesforce, ChatGPT, Amazon Bedrock, and Azure OpenAI using DataSunrise.
+This repository contains a Docker Compose deployment for monitoring Salesforce and Generative AI
+traffic with DataSunrise. It runs DataSunrise eCAP, an HTTP proxy, Redis, Elasticsearch, and the
+proxy-service UI on one Docker host.
 
-## Table of Contents
-1. [Architecture Overview](#architecture-overview)  
-2. [Deployment Parameters](#deployment-parameters)  
-      - [Proxy Service](#proxy-service)  
-      - [DataSunrise ECAP](#datasunrise-ecap)  
-      - [Optional Database Configurations](#optional-database-configurations)  
-3. [Salesforce](#salesforce)  
-4. [ChatGPT](#chatgpt)  
-5. [Amazon Bedrock](#amazon-bedrock)  
-6. [Azure OpenAI](#azure-openai)  
+Clients send HTTP and HTTPS traffic through the proxy exposed by the `datasunrise_ecap` service.
+DataSunrise can then audit, secure, or mask supported web application traffic.
 
-## Architecture Overview
+## Deployment Architecture
 
-The deployment includes the following key components:
+| Service | Purpose | Port |
+| --- | --- | --- |
+| `datasunrise_ecap` | DataSunrise and the HTTP proxy used for monitored traffic | `3128`, `11000` |
+| `proxy-service` | Configuration service and UI for web application monitoring | `9999` |
+| `redis` | Internal session and service data storage | `6379` on the Compose network |
+| `elasticsearch` | Internal search and analytics storage | `9200` and `9300` on the Compose network |
 
-1. **Proxy Service**:
-   - Handles connections and routing between Salesforce, ChatGPT, and other services.
-   - Configurable via Docker environment variables.
-   
-2. **Redis**:
-   - Used for session management and caching.
-   
-3. **Elasticsearch**:
-   - Provides search and analytics capabilities.
-   
-4. **DataSunrise ECAP**:
-   - Central component for security and monitoring.
-   - Manages license keys and administrative access.
+The supplied Compose file is a self-contained deployment. DataSunrise eCAP is already included, so
+do not deploy a separate eCAP service alongside it.
 
-## Deployment Parameters
+The Compose file does not connect eCAP to an existing DataSunrise management server and does not
+configure shared Dictionary or Audit databases. If an existing DataSunrise deployment must be
+reused, contact DataSunrise Support to confirm a supported architecture before changing the
+Compose file.
 
-### Proxy Service
+## Prerequisites
 
-- **ADMIN_PASSWORD**: Password for DataSunrise admin access.
-- **CONFIG_REPO_URL**: URL for the configuration repository (default: DataSunrise GitHub repository).
-- **CONFIG_SOURCE**: You can change source from repository to local destination with option `LOCAL`. In this case,
-                     will be used the configuration in `/opt/proxy/scripts/` directory inside the proxy-service container. Put `config.json` inside
-                     the container during startup by using volumes.
+- Docker Engine
+- Docker Compose
+- A DataSunrise license key, if required for the deployment
+- Credentials for the web application or API that will be monitored
 
-### DataSunrise ECAP
+## Configure the Deployment
 
-- **DS_LICENSE_KEY**: DataSunrise license key.
-- **DS_ADMIN_PASSWORD**: Admin password for DataSunrise.
-  
-### Optional Database Configurations
+Open `docker-compose.yml` and replace the placeholder values before starting the services.
 
-- **DICTIONARY_TYPE**: Type of the remote dictionary database.
-- **DICTIONARY_HOST**: Hostname or IP of the dictionary database.
-- **DICTIONARY_PORT**: Port for the dictionary database.
-- **DICTIONARY_DB_NAME**: Name of the dictionary database.
-- **DICTIONARY_LOGIN**: Username for the dictionary database.
-- **DICTIONARY_PASS**: Password for the dictionary database.
-- **AUDIT_TYPE**: Type of the remote audit database.
-- **AUDIT_HOST**: Hostname or IP of the audit database.
-- **AUDIT_PORT**: Port for the audit database.
-- **AUDIT_DB_NAME**: Name of the audit database.
-- **AUDIT_LOGIN**: Username for the audit database.
-- **AUDIT_PASS**: Password for the audit database.
+| Placeholder | Where it is used | Description |
+| --- | --- | --- |
+| `<REDIS_PASSWORD>` | `redis`, `proxy-service`, `datasunrise_ecap` | Use the same Redis password in all three services. |
+| `<ELASTICSEARCH_PASSWORD>` | `elasticsearch`, its health check, `proxy-service` | Use the same password in all three locations. |
+| `<ADMIN_PASSWORD>` | `proxy-service` | Password for the proxy-service UI. |
+| `<LICENSE_KEY_OPTIONAL>` | `datasunrise_ecap` | DataSunrise license key. |
+| `<DS_ADMIN_PASSWORD_OPTIONAL>` | `datasunrise_ecap` | Password for the DataSunrise administrator account. |
 
-## Salesforce
+By default, `proxy-service` loads its configuration from this repository:
 
-### Prerequisites
-
-- **Docker**: Ensure Docker is installed and running on your system.
-- **Docker Compose**: Required for orchestrating the services.
-- **DataSunrise License**: Valid license key for DataSunrise.
-- **Salesforce Credentials**: Valid Salesforce account credentials for integration.
-
-Start the infrastructure from the directory with the docker-compose.yml with the following command:
-
-```bash
- docker-compose up -d
-```
-### To audit the Salesforce or ChatGPT sessions through the squid-proxy, do the following:
-1) Indicate the Host <yourdockerhost> and the Port 3128 in your browser or Network System Settings.
-2) The squid certificate is located in the datasunrise_ecap-1 docker container, in the '/home/datasunrise/ssl/'
-squidCA.pem directory.
-3) Copy a file from a docker to a host directory <destiny> with the following command:
-
-```bash
-docker cp <project name>-datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem <destiny>
+```yaml
+CONFIG_SOURCE=GIT
+CONFIG_REPO_URL=https://github.com/datasunrise-github/waf_datasunrise
 ```
 
-**Note:** 
-After making changes to Generative AI settings (e.g., setting up the instance, audit rules, event tagging, or Dynamic Masking attributes), you need to restart the ecap container to apply them.
+To use a local configuration, set `CONFIG_SOURCE=LOCAL` and mount `config.json` and the required
+scripts into `/opt/proxy/scripts/` in the `proxy-service` container.
 
-> Look for a container with **"ecap"** in its name:
-> ```bash
-> sudo docker ps -a --filter "name=ecap" 
-> ```
-> and then restart it:
-> ```bash
-> docker restart <container_name>
-> ```
+## Start the Deployment
 
-### To configure the proxy-service, do the following:
-
-In DataSunrise go to the Configuration→Databases→Add Database. Input the following information to connect Redis service:
- Database Type (Salesforce);
- Hostname or IP (Redis);
- Port;
- Database user name;
- Password (the Redis password).
-
-   4) Open http://<your docker host>:9999/ui/auth/login in your browser.
-   5) In the Applications → Add Salesforce add a new connection. Specify the username, password, and TOTP Secret from your Salesforce account.
-
-In DataSunrise go to the Configuration → Databases → Add Database. Input the following information to connect Redis service:
-   - Database Type (Salesforce);
-   - Hostname or IP (Redis);
-   - Port;
-   - Database user name;
-   - Password (the Redis password).
-   
-## ChatGPT
-
-### Prerequisites:
-   - Docker: Ensure Docker is installed and running on your system.
- 	
-   - Docker Compose: Required for orchestrating the services.
- 	
-   - DataSunrise License: Valid license key for DataSunrise.
-
-Start the infrastructure from the directory with the docker-compose.yml with the following command: 
+From the directory containing `docker-compose.yml`, run:
 
 ```bash
-docker-compose up -d 
+docker compose up -d
 ```
 
-### To audit the sessions through the squid-proxy, do the following:
-   1) Indicate the Host and the Port 3128 in your browser or Network System Settings. 
-   2) The squid certificate is located in the datasunrise_ecap-1 docker container, in the /home/datasunrise/ssl/ squidCA.pem directory. 
-   3) Copy a file from a docker to a host directory with the following command: 
-      ```bash
-      docker cp -datasunrise_ecap-1:/home/datasunrise/ssl/squidCA.pem 
-      ```
+Check the service status:
 
-### To configure the proxy-service, do the following: 
+```bash
+docker compose ps
+```
 
-   1) In DataSunrise go to the Configuration→Databases→Add Database.
-   2) Input the following information to connect Redis service:
-         - Database Type (Generative AI); 
-         - Hostname or IP (Redis); 
-         - Port;
-         - Database user name; 
-         - Password (the Redis password).
+### Docker Compose Project Name
 
-**Important:** You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve.
+Docker Compose uses a project name to identify the resources created for a deployment. By default,
+the project name is based on the directory that contains the Compose file.
 
-## Amazon Bedrock
+To set it explicitly, use either of these methods:
 
-### Prerequisites:
-   - Docker: Ensure Docker is installed and running on your system.
- 	
-   - Docker Compose: Required for orchestrating the services.
- 	
-   - DataSunrise License: Valid license key for DataSunrise.
+```bash
+docker compose -p datasunrise-waf up -d
+```
 
-   - AWS CLI: Download AWS CLI from the official [website](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
- 
- To configure DataSunrise to connect to Bedrock with AWS CLI, do the following:
+or create a `.env` file next to `docker-compose.yml`:
 
-   1) Add the Bedrock profile to the AWS configuration:
+```dotenv
+COMPOSE_PROJECT_NAME=datasunrise-waf
+```
 
-       [profile bedrock] aws_access_key_id = aws_secret_access_key = region = output = json 
+Use the same project name in later Compose commands. The commands in this guide refer to Compose
+service names, so you do not need to determine generated container names.
 
-   2) Create a folder to run AWS CLI. 
-   3) In DataSunrise go to the Configuration→Databases→Add Database. Input the following information to connect Redis service:
-   - Database Type (Generative AI);
-   - Hostname or IP (Redis);
-   - Port; 
-   - Database user name; 
-   - Password (the Redis password).
+## Configure the HTTP Proxy and CA Certificate
 
-**Important:** You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve. After all the configuration is done, you will be able to create an Audit Rule.
+Complete these steps once for each client that sends monitored traffic through DataSunrise.
 
-## Azure OpenAI
+1. Configure the client to use the following HTTP and HTTPS proxy:
 
-### Prerequisites:
-   - Docker: Ensure Docker is installed and running on your system.
- 	
-   - Docker Compose: Required for orchestrating the services.
- 	
-   - DataSunrise License: Valid license key for DataSunrise.
+   ```text
+   Host: <docker-host>
+   Port: 3128
+   ```
 
+   Replace `<docker-host>` with the hostname or IP address of the Docker host. Use `127.0.0.1` when
+   the client runs on that host.
 
-   1. Add the Azure OpenAI profile to the  Azure configuration:
-         ```bash
-         export AZURE_OPENAI_ENDPOINT="" export AZURE_OPENAI_API_KEY=""
-         ```
-   2. Execute the following command:
-         ```bash
-          curl $AZURE_OPENAI_ENDPOINT --proxy http://127.0.0.1:3128
-          -H "Content-Type: application/json"
-          -H "api-key: $AZURE_OPENAI_API_KEY"  
-         -k -d "{\"messages\":[{\"role\": \"user\", \"content\": \"1+1\"}]}" 
-         ```
-**Note:** it is mandatory to indicate the --proxy http://127.0.0.1:3128 to process prompts through DataSunrise. 
+2. Copy the proxy CA certificate to the current directory:
 
-   3. In DataSunrise go to the Configuration→Databases→Add Database. Input the following information to connect Redis service: 
-   - Database Type (Generative AI);
-   - Hostname or IP (Redis);
-   - Port; 
-   - Database user name; 
-   - Password (the Redis password).
+   ```bash
+   docker compose cp datasunrise_ecap:/home/datasunrise/ssl/squidCA.pem ./squidCA.pem
+   ```
 
-**Important:** You need to choose one of the two Save Password methods: Save in DataSunrise or Retrieve. After all the configuration is done, you will be able to create an Audit Rule.
+3. Trust `squidCA.pem` on the client:
+
+   - For a browser, import it into the browser or operating system trust store.
+   - For a command-line client, specify it with the client's CA certificate option or environment
+     variable.
+
+The proxy decrypts HTTPS traffic for inspection. The client will reject the proxy certificate
+unless its CA certificate is trusted.
+
+## Configure DataSunrise
+
+1. Open the DataSunrise Web Console:
+
+   ```text
+   https://<docker-host>:11000
+   ```
+
+2. Go to **Configuration** -> **Databases** and click **Add Database**.
+
+3. Configure the connection:
+
+   | Field | Value |
+   | --- | --- |
+   | Database Type | `Salesforce` for Salesforce, or `Generative AI` for ChatGPT, Claude, Amazon Bedrock, and Azure OpenAI |
+   | Hostname or IP | `redis` |
+   | Port | `6379` |
+   | Database user name | `default` |
+   | Password | The value configured for `<REDIS_PASSWORD>` |
+
+4. Select **Save in DataSunrise** or **Retrieve** as the password storage method, then save the
+   connection.
+
+These settings connect DataSunrise to the Redis service used by the proxy. They are not the
+credentials for Salesforce or a Generative AI provider.
+
+5. Create the required Audit, Security, or Dynamic Masking Rules for the connection.
+
+## Monitor Salesforce
+
+1. Open the proxy-service UI:
+
+   ```text
+   http://<docker-host>:9999/ui/auth/login
+   ```
+
+2. Sign in with the password configured for `<ADMIN_PASSWORD>`.
+3. Go to **Applications** -> **Add Salesforce** and enter the Salesforce username, password, and
+   TOTP secret.
+4. Open Salesforce from a browser configured to use the DataSunrise proxy.
+5. Verify the activity under **Audit** -> **Transactional Trails** in DataSunrise.
+
+## Monitor ChatGPT or Claude
+
+1. Configure the browser to use the DataSunrise proxy and trust `squidCA.pem`.
+2. Open ChatGPT or Claude and send a prompt.
+3. Verify the activity under **Audit** -> **Transactional Trails** in DataSunrise.
+
+## Monitor Amazon Bedrock
+
+Configure AWS credentials and a Region that can access Amazon Bedrock. Then configure the AWS
+client to use the proxy and its CA certificate:
+
+```bash
+export HTTP_PROXY="http://<docker-host>:3128"
+export HTTPS_PROXY="http://<docker-host>:3128"
+export AWS_CA_BUNDLE="/path/to/squidCA.pem"
+```
+
+Run an Amazon Bedrock Runtime request and verify it under **Audit** -> **Transactional Trails** in
+DataSunrise. AWS credentials remain in the AWS client configuration and are not entered in the
+DataSunrise connection.
+
+See the AWS CLI [`invoke-model` reference](https://docs.aws.amazon.com/cli/latest/reference/bedrock-runtime/invoke-model.html)
+for request syntax.
+
+## Monitor Azure OpenAI
+
+Set the full Azure OpenAI request endpoint and API key:
+
+```bash
+export AZURE_OPENAI_ENDPOINT="<Azure-OpenAI-request-endpoint>"
+export AZURE_OPENAI_API_KEY="<Azure-OpenAI-API-key>"
+```
+
+Send a request through the proxy and verify the connection with `squidCA.pem`:
+
+```bash
+curl "$AZURE_OPENAI_ENDPOINT" \
+  --proxy "http://<docker-host>:3128" \
+  --cacert "/path/to/squidCA.pem" \
+  --header "Content-Type: application/json" \
+  --header "api-key: $AZURE_OPENAI_API_KEY" \
+  --data '{"messages":[{"role":"user","content":"1+1"}]}'
+```
+
+Verify the request under **Audit** -> **Transactional Trails** in DataSunrise. The endpoint and API
+key remain in the Azure OpenAI client configuration.
+
+## Operations
+
+Restart the DataSunrise eCAP service after changing its configuration:
+
+```bash
+docker compose restart datasunrise_ecap
+```
+
+Stop and remove the deployment:
+
+```bash
+docker compose down
+```
+
+If you set an explicit project name with `-p`, include it in these commands as well.
+
+## Troubleshooting
+
+If monitored traffic does not appear in DataSunrise, check the following:
+
+- All services are running in `docker compose ps`.
+- The client uses `<docker-host>:3128` as its HTTP and HTTPS proxy.
+- The client trusts `squidCA.pem`.
+- The DataSunrise connection uses `redis` on port `6379` and the configured Redis password.
+- The required Audit, Security, or Dynamic Masking Rule is enabled for the connection.
+
+View service logs with:
+
+```bash
+docker compose logs <service-name>
+```
+
+## References
+
+- [Docker Compose project names](https://docs.docker.com/compose/how-tos/project-name/)
+- [`docker compose cp`](https://docs.docker.com/reference/cli/docker/compose/cp/)
+- [Using an HTTP proxy with AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-proxy.html)
+- [AWS CLI environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
